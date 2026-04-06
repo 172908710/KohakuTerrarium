@@ -236,14 +236,15 @@ Read file contents with optional line range.
         if pages:
             start, end = _parse_page_range(pages, total_pages)
 
-        # Cap at 20 pages per read
-        max_pages = 20
-        if end - start > max_pages:
+        # Soft warning for large PDFs without explicit page range
+        warn_threshold = int(self.config.extra.get("pdf_page_warn", 20))
+        if not pages and total_pages > warn_threshold:
             doc.close()
             return ToolResult(
-                error=f"Too many pages ({end - start}). Max {max_pages} per read. "
-                f"Total pages: {total_pages}. Use pages= to specify a range, "
-                f'e.g. pages="1-{max_pages}".'
+                error=f"This PDF has {total_pages} pages. Reading all at once "
+                f"will be very large. Please specify a page range, e.g. "
+                f'pages="1-{warn_threshold}" or pages="1-{total_pages}" '
+                f"if you really want all pages."
             )
 
         # Extract text + render pages

@@ -199,15 +199,14 @@ class Executor:
                 metadata=result.metadata,
             )
 
-            # Update status
+            # Update status (output may be string or list of multimodal parts)
+            output_str = result.output if isinstance(result.output, str) else ""
             self.job_store.update_status(
                 job_id,
                 state=JobState.DONE if result.success else JobState.ERROR,
-                output_lines=result.output.count("\n") + 1 if result.output else 0,
-                output_bytes=len(result.output.encode("utf-8")),
-                preview=(
-                    result.output[:TOOL_OUTPUT_PREVIEW_CHARS] if result.output else ""
-                ),
+                output_lines=output_str.count("\n") + 1 if output_str else 0,
+                output_bytes=len(output_str.encode("utf-8")) if output_str else 0,
+                preview=(output_str[:TOOL_OUTPUT_PREVIEW_CHARS] if output_str else ""),
                 error=result.error,
             )
             self.job_store.store_result(job_result)
