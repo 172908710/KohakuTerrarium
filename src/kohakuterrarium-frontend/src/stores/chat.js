@@ -742,12 +742,39 @@ export const useChatStore = defineStore("chat", {
       if (!this.messagesByTab[source]) return;
       const msgs = this.messagesByTab[source];
 
-      if (at === "compact_complete") {
+      if (at === "compact_start") {
+        // Show a "compacting..." placeholder immediately
+        const round = data.round || 0;
         msgs.push({
-          id: "compact_" + Date.now(),
+          id: "compact_" + round + "_" + Date.now(),
           role: "compact",
-          round: data.round || 0,
+          round,
+          summary: "",
+          status: "running",
+          messagesCompacted: 0,
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      if (at === "compact_complete") {
+        // Find the running compact message and update it
+        const round = data.round || 0;
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].role === "compact" && msgs[i].status === "running") {
+            msgs[i].summary = data.summary || "";
+            msgs[i].messagesCompacted = data.messages_compacted || 0;
+            msgs[i].status = "done";
+            return;
+          }
+        }
+        // Fallback: no running compact found, just push a new one
+        msgs.push({
+          id: "compact_" + round + "_" + Date.now(),
+          role: "compact",
+          round,
           summary: data.summary || "",
+          status: "done",
           messagesCompacted: data.messages_compacted || 0,
           timestamp: new Date().toISOString(),
         });

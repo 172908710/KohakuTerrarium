@@ -22,14 +22,26 @@
   <!-- Context compacted (accordion) -->
   <div
     v-else-if="message.role === 'compact'"
-    class="rounded-lg bg-iolite/6 dark:bg-iolite/8 border border-iolite/15 dark:border-iolite/20 overflow-hidden"
+    class="rounded-lg overflow-hidden"
+    :class="message.status === 'running'
+      ? 'bg-amber/6 dark:bg-amber/8 border border-amber/15 dark:border-amber/20'
+      : 'bg-iolite/6 dark:bg-iolite/8 border border-iolite/15 dark:border-iolite/20'"
   >
     <div
       class="flex items-center gap-2 py-1.5 px-3 cursor-pointer select-none"
       @click="toggleTool('compact_' + message.id)"
     >
-      <span class="text-iolite dark:text-iolite-light text-xs font-medium">
-        Context Compacted (round {{ message.round || '?' }})
+      <span
+        v-if="message.status === 'running'"
+        class="w-1.5 h-1.5 rounded-full bg-amber kohaku-pulse shrink-0"
+      />
+      <span
+        class="text-xs font-medium"
+        :class="message.status === 'running'
+          ? 'text-amber dark:text-amber-light'
+          : 'text-iolite dark:text-iolite-light'"
+      >
+        {{ message.status === 'running' ? 'Compacting context...' : `Context Compacted (round ${message.round || '?'})` }}
       </span>
       <span v-if="message.messagesCompacted" class="text-[10px] text-warm-400">
         {{ message.messagesCompacted }} messages summarized
