@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Programmatic API for terrarium management.
 
@@ -5,7 +6,6 @@ Wraps TerrariumRuntime with convenient methods for channel
 operations, creature lifecycle, and terrarium status.
 """
 
-from __future__ import annotations
 
 import asyncio
 from typing import TYPE_CHECKING, Any

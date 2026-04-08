@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Terrarium session persistence helpers.
 
@@ -6,7 +7,6 @@ root agent, channels) and rebuilding Conversation objects from saved
 message dicts on resume.
 """
 
-from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 

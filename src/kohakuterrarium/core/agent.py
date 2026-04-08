@@ -8,16 +8,16 @@ Component initialization is in agent_init.py (AgentInitMixin).
 Event handling and tool execution is in agent_handlers.py (AgentHandlersMixin).
 """
 
-from __future__ import annotations
-
 import asyncio
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Optional
 
 from kohakuterrarium.core.agent_handlers import AgentHandlersMixin
 from kohakuterrarium.bootstrap.agent_init import AgentInitMixin
 from kohakuterrarium.bootstrap.llm import create_llm_from_profile_name
 from kohakuterrarium.bootstrap.plugins import init_plugins
 from kohakuterrarium.core.compact import CompactConfig, CompactManager
+from kohakuterrarium.modules.plugin.base import PluginContext
 from kohakuterrarium.core.config import AgentConfig, load_agent_config
 from kohakuterrarium.core.job import JobState
 from kohakuterrarium.core.events import TriggerEvent, create_user_input_event
@@ -48,10 +48,10 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         input_module: InputModule | None = None,
         output_module: OutputModule | None = None,
         session: Session | None = None,
-        environment: Environment | None = None,
+        environment: Optional["Environment"] = None,
         llm_override: str | None = None,
         pwd: str | None = None,
-    ) -> Agent:
+    ) -> "Agent":
         """
         Create agent from config directory path.
 
@@ -85,7 +85,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         input_module: InputModule | None = None,
         output_module: OutputModule | None = None,
         session: Session | None = None,
-        environment: Environment | None = None,
+        environment: Optional["Environment"] = None,
         llm_override: str | None = None,
         pwd: str | None = None,
     ):
@@ -130,7 +130,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         self.plugins: Any = None  # PluginManager | None
 
         # Environment and session (explicit or auto-created in _init_executor)
-        self.environment: Environment | None = environment
+        self.environment: Optional["Environment"] = environment
         self._explicit_session: Session | None = session
 
         # Module loader for custom components
@@ -210,6 +210,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
 
         self._init_compact_manager()
         self._init_plugins()
+        await self._load_plugins()
         self._publish_session_info()
 
         if self._termination_checker:
@@ -358,12 +359,46 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
                 pass
 
     def _init_plugins(self) -> None:
-        """Initialize plugins from config. No-op if none configured."""
-        if not getattr(self.config, "plugins", []):
+        """Initialize plugins from config + discover from packages."""
+        plugin_cfgs = getattr(self.config, "plugins", []) or []
+        self.plugins = init_plugins(plugin_cfgs, self._loader)
+        if not self.plugins:
             return
-        self.plugins = init_plugins(self.config.plugins, self._loader)
-        if self.plugins:
-            self.controller.plugins = self.plugins
+        self.controller.plugins = self.plugins
+        self._apply_plugin_hooks()
+
+    async def _load_plugins(self) -> None:
+        """Load plugins and fire on_agent_start."""
+        if not self.plugins:
+            return
+        wd = Path(self.executor._working_dir) if self.executor else Path.cwd()
+        ctx = PluginContext(
+            agent_name=self.config.name,
+            working_dir=wd,
+            model=getattr(self.llm, "model", ""),
+            _agent=self,
+        )
+        await self.plugins.load_all(ctx)
+        await self.plugins.notify("on_agent_start")
+
+    def _apply_plugin_hooks(self) -> None:
+        """Wrap methods with plugin pre/post hooks (transparent decoration)."""
+        pm = self.plugins
+        for tool_name in self.registry.list_tools():
+            tool = self.registry.get_tool(tool_name)
+            if tool and hasattr(tool, "execute"):
+                tool.execute = pm.wrap_method(
+                    "pre_tool_execute",
+                    "post_tool_execute",
+                    tool.execute,
+                    input_kwarg="args",
+                    extra_kwargs={"tool_name": tool_name},
+                )
+        self.subagent_manager._run_subagent = pm.wrap_method(
+            "pre_subagent_run",
+            "post_subagent_run",
+            self.subagent_manager._run_subagent,
+        )
 
     def _publish_session_info(self) -> None:
         """Publish session info to output (for TUI session panel).
@@ -448,6 +483,10 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         # NOTE: Background sub-agents are NOT cancelled by interrupt.
         # They have their own lifecycle and must be cancelled individually
         # via _cancel_job() (TUI click / frontend stopTask API).
+
+        # Plugin callback (fire-and-forget, non-blocking)
+        if self.plugins:
+            asyncio.create_task(self.plugins.notify("on_interrupt"))
 
         logger.info("Agent interrupted", agent_name=self.config.name)
 
@@ -568,10 +607,13 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         """Stop all agent modules."""
         logger.info("Stopping agent", agent_name=self.config.name)
 
+        if self.plugins:
+            await self.plugins.notify("on_agent_stop")
+            await self.plugins.unload_all()
+
         self._running = False
         self._shutdown_event.set()
 
-        # Shutdown MCP connections
         if hasattr(self, "_mcp_manager") and self._mcp_manager:
             await self._mcp_manager.shutdown()
 

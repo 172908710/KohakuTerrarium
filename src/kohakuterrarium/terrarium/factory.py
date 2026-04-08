@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Creature and root agent construction.
 
@@ -7,7 +8,6 @@ Extracted from TerrariumRuntime to keep the runtime focused on
 lifecycle orchestration.
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Any

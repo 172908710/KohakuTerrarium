@@ -1,6 +1,5 @@
 """Sub-agent result types and job wrapper."""
 
-from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
