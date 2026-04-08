@@ -7,6 +7,11 @@ Keys are model names (or aliases). Users reference these by name.
 
 from typing import Any
 
+from kohakuterrarium.packages import list_packages
+from kohakuterrarium.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
 # ── Built-in Presets ──────────────────────────────────────────
 # Model-specific metadata that can't be obtained from APIs.
 # Keys are model names (or aliases). Users reference these by name.
@@ -723,3 +728,62 @@ ALIASES: dict[str, str] = {
     "devstral": "devstral-2",
     "ministral": "ministral-3-14b",
 }
+
+
+# ── Package preset merging ───────────────────────────────────
+_package_presets_merged: bool = False
+_all_presets_cache: dict[str, dict[str, Any]] | None = None
+
+
+def _merge_package_presets() -> dict[str, dict[str, Any]]:
+    """Scan installed packages for llm_presets and merge into PRESETS.
+
+    Package presets do NOT override built-in presets; they only add new entries.
+    """
+    global _package_presets_merged
+    if _package_presets_merged:
+        return {}
+
+    _package_presets_merged = True
+    merged: dict[str, dict[str, Any]] = {}
+
+    try:
+        for pkg in list_packages():
+            for preset in pkg.get("llm_presets", []):
+                if not isinstance(preset, dict):
+                    continue
+                preset_name = preset.get("name")
+                if not preset_name:
+                    continue
+                if preset_name in PRESETS:
+                    logger.debug(
+                        "Package preset skipped (builtin exists)",
+                        preset=preset_name,
+                        package=pkg["name"],
+                    )
+                    continue
+                if preset_name in merged:
+                    logger.debug(
+                        "Package preset skipped (duplicate)",
+                        preset=preset_name,
+                        package=pkg["name"],
+                    )
+                    continue
+                # Build preset dict from the entry (exclude 'name' key)
+                preset_data = {k: v for k, v in preset.items() if k != "name"}
+                merged[preset_name] = preset_data
+    except Exception:
+        logger.debug("Failed to load package presets", exc_info=True)
+
+    return merged
+
+
+def get_all_presets() -> dict[str, dict[str, Any]]:
+    """Return PRESETS merged with package presets, cached after first call."""
+    global _all_presets_cache
+    if _all_presets_cache is not None:
+        return _all_presets_cache
+
+    package_presets = _merge_package_presets()
+    _all_presets_cache = {**PRESETS, **package_presets}
+    return _all_presets_cache

@@ -308,9 +308,47 @@ def list_packages() -> list[dict]:
                 "editable": editable,
                 "creatures": manifest.get("creatures", []),
                 "terrariums": manifest.get("terrariums", []),
+                "tools": manifest.get("tools", []),
+                "plugins": manifest.get("plugins", []),
+                "llm_presets": manifest.get("llm_presets", []),
             }
         )
     return results
+
+
+def get_package_modules(package_name: str, module_type: str) -> list[dict]:
+    """Get modules of a specific type from a package manifest.
+
+    Args:
+        package_name: Name of the installed package.
+        module_type: One of "tools", "plugins", "llm_presets", "creatures", "terrariums".
+
+    Returns:
+        List of module definition dicts from the manifest, or [] if not found.
+    """
+    pkg_root = _get_package_root(package_name)
+    if pkg_root is None:
+        return []
+    manifest = _load_manifest(pkg_root)
+    return manifest.get(module_type, [])
+
+
+def resolve_package_tool(tool_name: str) -> tuple[str, str] | None:
+    """Scan installed packages for a tool with the given name.
+
+    Returns:
+        (module_path, class_name) tuple if found, or None.
+    """
+    for pkg in list_packages():
+        for tool_def in pkg.get("tools", []):
+            if not isinstance(tool_def, dict):
+                continue
+            if tool_def.get("name") == tool_name:
+                module_path = tool_def.get("module")
+                class_name = tool_def.get("class") or tool_def.get("class_name")
+                if module_path and class_name:
+                    return (module_path, class_name)
+    return None
 
 
 def get_package_path(name: str) -> Path | None:
@@ -331,14 +369,24 @@ def _load_manifest(pkg_dir: Path) -> dict:
 
 
 def _validate_package(pkg_dir: Path, name: str) -> None:
-    """Basic validation of a package structure."""
+    """Basic validation of a package structure.
+
+    A package is valid if it has at least one of: creatures/, terrariums/,
+    or manifest entries for tools, plugins, or llm_presets.
+    """
     has_creatures = (pkg_dir / "creatures").is_dir()
     has_terrariums = (pkg_dir / "terrariums").is_dir()
     if not has_creatures and not has_terrariums:
-        logger.warning(
-            "Package has no creatures/ or terrariums/ directory",
-            package=name,
-        )
+        # Check manifest for extension modules
+        manifest = _load_manifest(pkg_dir)
+        has_tools = bool(manifest.get("tools"))
+        has_plugins = bool(manifest.get("plugins"))
+        has_presets = bool(manifest.get("llm_presets"))
+        if not has_tools and not has_plugins and not has_presets:
+            logger.warning(
+                "Package has no creatures/, terrariums/, or extension modules",
+                package=name,
+            )
 
 
 def _install_python_deps(pkg_dir: Path) -> None:

@@ -10,6 +10,8 @@ from kohakuterrarium.terrarium.cli import (
 )
 
 from kohakuterrarium.cli.auth import login_cli
+from kohakuterrarium.cli.extension import extension_info_cli, extension_list_cli
+from kohakuterrarium.cli.mcp import mcp_list_cli
 from kohakuterrarium.cli.memory import embedding_cli, search_cli
 from kohakuterrarium.cli.model import model_cli
 from kohakuterrarium.cli.packages import (
@@ -216,6 +218,27 @@ def main() -> int:
     model_show_parser = model_sub.add_parser("show", help="Show profile details")
     model_show_parser.add_argument("name", help="Model/profile name")
 
+    # Extension command group
+    ext_parser = subparsers.add_parser(
+        "extension", help="Manage package extension modules"
+    )
+    ext_sub = ext_parser.add_subparsers(dest="extension_command")
+    ext_sub.add_parser("list", help="List all installed extension modules")
+    ext_info_parser = ext_sub.add_parser(
+        "info", help="Show details of a specific package"
+    )
+    ext_info_parser.add_argument("name", help="Package name")
+
+    # MCP command group
+    mcp_parser = subparsers.add_parser("mcp", help="MCP server management")
+    mcp_sub = mcp_parser.add_subparsers(dest="mcp_command")
+    mcp_list_parser = mcp_sub.add_parser(
+        "list", help="List MCP servers from agent config"
+    )
+    mcp_list_parser.add_argument(
+        "--agent", required=True, help="Path to agent config folder"
+    )
+
     args = parser.parse_args()
 
     # No command given: launch desktop app (used by Briefcase and double-click)
@@ -275,6 +298,22 @@ def main() -> int:
         return 0
     elif args.command == "model":
         return model_cli(args)
+    elif args.command == "extension":
+        sub = getattr(args, "extension_command", None)
+        if sub == "list":
+            return extension_list_cli()
+        elif sub == "info":
+            return extension_info_cli(args.name)
+        else:
+            ext_parser.print_help()
+            return 0
+    elif args.command == "mcp":
+        sub = getattr(args, "mcp_command", None)
+        if sub == "list":
+            return mcp_list_cli(args.agent)
+        else:
+            mcp_parser.print_help()
+            return 0
     else:
         parser.print_help()
         return 0
