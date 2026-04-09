@@ -72,6 +72,12 @@ class AgentChat(BaseModel):
     message: str
 
 
+class MessageEdit(BaseModel):
+    """Request body for editing a user message and re-running."""
+
+    content: str
+
+
 class SlashCommand(BaseModel):
     """Request body for executing a slash command."""
 

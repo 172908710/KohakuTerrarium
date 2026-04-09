@@ -6,6 +6,7 @@ from kohakuterrarium.api.deps import get_manager
 from kohakuterrarium.api.schemas import (
     AgentChat,
     AgentCreate,
+    MessageEdit,
     ModelSwitch,
     SlashCommand,
 )
@@ -58,6 +59,43 @@ async def interrupt_agent(agent_id: str, manager=Depends(get_manager)):
         return {"status": "interrupted"}
     except ValueError as e:
         raise HTTPException(404, str(e))
+
+
+@router.post("/{agent_id}/regenerate")
+async def regenerate_response(agent_id: str, manager=Depends(get_manager)):
+    """Regenerate the last assistant response (uses current model/settings)."""
+    session = manager._agents.get(agent_id)
+    if not session:
+        raise HTTPException(404, f"Agent {agent_id} not found")
+    await session.agent.regenerate_last_response()
+    return {"status": "regenerating"}
+
+
+@router.post("/{agent_id}/messages/{msg_idx}/edit")
+async def edit_message(
+    agent_id: str,
+    msg_idx: int,
+    req: MessageEdit,
+    manager=Depends(get_manager),
+):
+    """Edit a user message at a given index and re-run from there."""
+    session = manager._agents.get(agent_id)
+    if not session:
+        raise HTTPException(404, f"Agent {agent_id} not found")
+    await session.agent.edit_and_rerun(msg_idx, req.content)
+    return {"status": "edited"}
+
+
+@router.post("/{agent_id}/messages/{msg_idx}/rewind")
+async def rewind_conversation(
+    agent_id: str, msg_idx: int, manager=Depends(get_manager)
+):
+    """Drop messages from msg_idx onward without re-running."""
+    session = manager._agents.get(agent_id)
+    if not session:
+        raise HTTPException(404, f"Agent {agent_id} not found")
+    await session.agent.rewind_to(msg_idx)
+    return {"status": "rewound"}
 
 
 @router.post("/{agent_id}/promote/{job_id}")

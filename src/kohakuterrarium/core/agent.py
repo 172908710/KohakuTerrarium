@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from kohakuterrarium.core.agent_handlers import AgentHandlersMixin
+from kohakuterrarium.core.agent_messages import AgentMessagesMixin
 from kohakuterrarium.bootstrap.agent_init import AgentInitMixin
 from kohakuterrarium.bootstrap.llm import create_llm_from_profile_name
 from kohakuterrarium.bootstrap.plugins import init_plugins
@@ -37,7 +38,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class Agent(AgentInitMixin, AgentHandlersMixin):
+class Agent(AgentInitMixin, AgentHandlersMixin, AgentMessagesMixin):
     """Main agent orchestrator. Wires LLM, controller, executor, I/O."""
 
     @classmethod

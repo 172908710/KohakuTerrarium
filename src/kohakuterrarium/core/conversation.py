@@ -226,6 +226,29 @@ class Conversation:
                 return msg
         return None
 
+    def truncate_from(self, index: int) -> list[Message]:
+        """Remove messages from ``index`` onward.
+
+        Returns the removed messages. If ``index`` is 0 or 1 (system only),
+        nothing is removed. Used by edit/regenerate/rewind features.
+        """
+        if index < 0 or index >= len(self._messages):
+            return []
+        removed = self._messages[index:]
+        self._messages = self._messages[:index]
+        self._metadata.message_count = len(self._messages)
+        self._metadata.total_chars = sum(
+            _get_content_text_length(m.content) for m in self._messages
+        )
+        return removed
+
+    def find_last_user_index(self) -> int:
+        """Return the index of the last user message, or -1 if none."""
+        for i in range(len(self._messages) - 1, -1, -1):
+            if self._messages[i].role == "user":
+                return i
+        return -1
+
     def clear(self, keep_system: bool = True) -> None:
         """
         Clear the conversation history.
