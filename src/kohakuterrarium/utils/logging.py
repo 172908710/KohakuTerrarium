@@ -3,10 +3,19 @@ Custom logging module with colored output and comprehensive formatting.
 
 Format: [HH:MM:SS] [module.name] [LEVEL] message
 Colors: DEBUG=gray, INFO=green, WARNING=yellow, ERROR=red
+
+Default behavior:
+  - Logs written to ``~/.kohakuterrarium/logs/kt.log`` (rotating, 10MB x 5)
+  - No stderr output — keeps CLI clean
+  - Set ``KT_LOG_STDERR=1`` to also log to stderr (for debugging)
 """
 
+import datetime
+import hashlib
 import logging
+import os
 import sys
+from pathlib import Path
 from typing import Any
 
 try:
@@ -161,30 +170,51 @@ logging.setLoggerClass(KTLogger)
 _handler: logging.Handler | None = None
 
 
+DEFAULT_LOG_DIR = Path.home() / ".kohakuterrarium" / "logs"
+
+
+def _make_log_filename() -> str:
+    """Build a unique log filename: YYYY-MM-DD_HHMMSS_pid<N>_<pwdhash>.log.
+
+    Ensures each process has its own log file, preventing conflicts
+    when multiple kt instances run concurrently.
+    """
+    now = datetime.datetime.now()
+    date_str = now.strftime("%Y-%m-%d_%H%M%S")
+    pid = os.getpid()
+    # Short hash of working directory to help identify which session
+    cwd_hash = hashlib.md5(str(Path.cwd()).encode()).hexdigest()[:8]
+    return f"{date_str}_pid{pid}_{cwd_hash}.log"
+
+
+def _create_file_handler() -> logging.Handler:
+    """Create a per-process file handler with unique filename."""
+    DEFAULT_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_file = DEFAULT_LOG_DIR / _make_log_filename()
+    handler = logging.FileHandler(log_file, encoding="utf-8")
+    handler.setFormatter(ColoredFormatter(use_color=False))
+    handler.setLevel(logging.DEBUG)
+    return handler
+
+
 def get_logger(name: str, level: int | str = logging.INFO) -> logging.Logger:
     """
     Get a configured logger for a module.
 
+    By default, logs go to ``~/.kohakuterrarium/logs/kt.log`` (rotating).
+    Set ``KT_LOG_STDERR=1`` to also log to stderr.
+
     Args:
         name: Module name (typically __name__)
-        level: Logging level (default: DEBUG)
+        level: Logging level (default: INFO)
 
     Returns:
         Configured Logger instance
-
-    Usage:
-        from kohakuterrarium.utils.logging import get_logger
-        logger = get_logger(__name__)
-        logger.info("Starting process", task_id="123")
-        logger.debug("Debug info")
-        logger.warning("Something unusual")
-        logger.error("Something went wrong")
     """
     global _handler
 
     logger = logging.getLogger(name)
 
-    # Convert string level to int if needed
     if isinstance(level, str):
         level = getattr(logging, level.upper(), logging.DEBUG)
 
@@ -192,18 +222,20 @@ def get_logger(name: str, level: int | str = logging.INFO) -> logging.Logger:
 
     # Only add handler once (to root logger)
     if _handler is None:
-        # Use flushing handler for immediate log output
-        _handler = FlushingStreamHandler(sys.stderr)
-        _handler.setFormatter(ColoredFormatter(use_color=True))
-        _handler.setLevel(
-            logging.DEBUG
-        )  # Handler passes all; level controlled per-logger
-
-        # Add to root logger for kohakuterrarium
         root_logger = logging.getLogger("kohakuterrarium")
+
+        # Default: file handler only
+        _handler = _create_file_handler()
         root_logger.addHandler(_handler)
+
+        # Optional: stderr handler if KT_LOG_STDERR=1
+        if os.environ.get("KT_LOG_STDERR"):
+            stderr_handler = FlushingStreamHandler(sys.stderr)
+            stderr_handler.setFormatter(ColoredFormatter(use_color=True))
+            stderr_handler.setLevel(logging.DEBUG)
+            root_logger.addHandler(stderr_handler)
+
         root_logger.setLevel(logging.INFO)
-        # Prevent propagation to root logger (avoid duplicate logs)
         root_logger.propagate = False
 
     return logger
@@ -252,78 +284,32 @@ class TUILogHandler(logging.Handler):
             pass  # Don't let logging errors crash the app
 
 
-_original_handler: logging.Handler | None = None
+_tui_handler: logging.Handler | None = None
 
 
 def enable_tui_logging(write_func: Any) -> None:
+    """Add a TUI handler that routes logs to a TUI write function.
+
+    The file handler keeps running — TUI handler is additive.
     """
-    Redirect all framework logs to a TUI write function.
-
-    Removes the stderr handler and installs a TUILogHandler
-    that calls write_func(formatted_message) for each record.
-
-    Args:
-        write_func: Callable that accepts a string (e.g., tui.write_log)
-    """
-    global _handler, _original_handler
-
+    global _tui_handler
     root_logger = logging.getLogger("kohakuterrarium")
-
-    # Save and remove the stderr handler
-    if _handler:
-        _original_handler = _handler
-        root_logger.removeHandler(_handler)
-
-    # Install TUI handler
-    _handler = TUILogHandler(write_func)
-    root_logger.addHandler(_handler)
+    _tui_handler = TUILogHandler(write_func)
+    root_logger.addHandler(_tui_handler)
 
 
 def disable_tui_logging() -> None:
-    """Restore stderr logging after TUI mode ends."""
-    global _handler, _original_handler
-
-    root_logger = logging.getLogger("kohakuterrarium")
-
-    # Remove TUI handler
-    if _handler:
-        root_logger.removeHandler(_handler)
-
-    # Restore original stderr handler
-    if _original_handler:
-        _handler = _original_handler
-        root_logger.addHandler(_handler)
-        _original_handler = None
+    """Remove the TUI log handler."""
+    global _tui_handler
+    if _tui_handler:
+        root_logger = logging.getLogger("kohakuterrarium")
+        root_logger.removeHandler(_tui_handler)
+        _tui_handler = None
 
 
 def suppress_logging() -> None:
-    """Suppress framework logs from stderr (for inline TUI mode).
-
-    Removes the stderr handler so logs don't interfere with inline output.
-    Call restore_logging() to bring it back.
-    """
-    global _handler, _original_handler
-
-    root_logger = logging.getLogger("kohakuterrarium")
-
-    if _handler:
-        _original_handler = _handler
-        root_logger.removeHandler(_handler)
-        # Install a NullHandler so logging doesn't complain
-        _handler = logging.NullHandler()
-        root_logger.addHandler(_handler)
+    """Deprecated: file-only logging is already quiet. No-op."""
 
 
 def restore_logging() -> None:
-    """Restore stderr logging after suppress_logging()."""
-    global _handler, _original_handler
-
-    root_logger = logging.getLogger("kohakuterrarium")
-
-    if _handler:
-        root_logger.removeHandler(_handler)
-
-    if _original_handler:
-        _handler = _original_handler
-        root_logger.addHandler(_handler)
-        _original_handler = None
+    """Deprecated: file-only logging is already quiet. No-op."""
