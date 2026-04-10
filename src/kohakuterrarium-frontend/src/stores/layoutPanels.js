@@ -17,6 +17,7 @@ import DebugPanel from "@/components/panels/DebugPanel.vue";
 import FilesPanel from "@/components/panels/FilesPanel.vue";
 import SettingsPanel from "@/components/panels/SettingsPanel.vue";
 import StatePanel from "@/components/panels/StatePanel.vue";
+import TerminalPanel from "@/components/panels/TerminalPanel.vue";
 import StatusDashboard from "@/components/status/StatusDashboard.vue";
 
 import { useLayoutStore } from "@/stores/layout";
@@ -49,7 +50,7 @@ const CHAT_FOCUS_PRESET = {
   ),
 };
 
-/** Workspace — files + editor + chat for code-work creatures. */
+/** Workspace — files + editor + chat + terminal for code-work creatures. */
 const WORKSPACE_PRESET = {
   id: "workspace",
   label: "Workspace",
@@ -57,7 +58,7 @@ const WORKSPACE_PRESET = {
   tree: hsplit(20,
     leaf("files"),
     hsplit(62,
-      leaf("monaco-editor"),
+      vsplit(70, leaf("monaco-editor"), leaf("terminal")),
       vsplit(65, leaf("chat"), leaf("activity")),
     ),
   ),
@@ -155,6 +156,7 @@ export function registerBuiltinPanels() {
   layout.registerPanel({ id: "canvas", label: "Canvas", component: CanvasPanel });
   layout.registerPanel({ id: "settings", label: "Settings", component: SettingsPanel });
   layout.registerPanel({ id: "debug", label: "Debug", component: DebugPanel });
+  layout.registerPanel({ id: "terminal", label: "Terminal", component: TerminalPanel });
 
   // ── Presets ──
   layout.registerBuiltinPreset(LEGACY_INSTANCE_PRESET);

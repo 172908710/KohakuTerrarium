@@ -66,6 +66,7 @@ const panelProps = computed(() => ({
   },
   settings: { instance: instance.value },
   debug: { instance: instance.value },
+  terminal: { instance: instance.value },
 }));
 provide("panelProps", panelProps);
 

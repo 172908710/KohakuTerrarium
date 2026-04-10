@@ -24,6 +24,7 @@ from kohakuterrarium.api.ws import (
     chat as ws_chat,
     files as ws_files,
     logs as ws_logs,
+    terminal as ws_terminal,
 )
 
 
@@ -95,6 +96,7 @@ def create_app(
     app.include_router(ws_chat.router, tags=["ws"])
     app.include_router(ws_files.router, tags=["ws"])
     app.include_router(ws_logs.router, tags=["ws"])
+    app.include_router(ws_terminal.router, tags=["ws"])
 
     # Static file serving for built web frontend (SPA)
     if static_dir and static_dir.is_dir():
